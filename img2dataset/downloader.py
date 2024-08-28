@@ -325,7 +325,8 @@ class Downloader:
                     meta["original_width"] = original_width
                     meta["original_height"] = original_height
                     if self.save_storage_info:
-                        meta["image_size_bytes"] = img_stream.getbuffer().nbytes
+                        meta["original_image_size_bytes"] = img_stream.getbuffer().nbytes
+                        meta["image_size_bytes"] = len(img)
                     img_stream.close()
                     del img_stream
 
