@@ -85,6 +85,7 @@ class Downloader:
         thread_count,
         save_caption,
         extract_exif,
+        save_storage_info,
         output_folder,
         column_list,
         timeout,
@@ -103,6 +104,7 @@ class Downloader:
         self.thread_count = thread_count
         self.save_caption = save_caption
         self.extract_exif = extract_exif
+        self.save_storage_info = save_storage_info
         self.output_folder = output_folder
         self.column_list = column_list
         self.timeout = timeout
@@ -322,6 +324,8 @@ class Downloader:
                     meta["height"] = height
                     meta["original_width"] = original_width
                     meta["original_height"] = original_height
+                    if self.save_storage_info:
+                        meta["image_size_bytes"] = img_stream.getbuffer().nbytes
                     img_stream.close()
                     del img_stream
 
