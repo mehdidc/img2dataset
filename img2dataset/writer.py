@@ -115,17 +115,26 @@ class WebDatasetSampleWriter:
         self.buffered_parquet_writer = BufferedParquetWriter(output_folder + "/" + shard_name + ".parquet", schema, 100)
         self.encode_format = encode_format
 
-    def write(self, img_str, key, caption, meta):
+    def write(self, img_str, key, caption, meta, prefix=""):
         """write sample to tars"""
         if img_str is not None:
-            sample = {"__key__": key, self.encode_format: img_str}
-            if self.save_caption:
-                sample["txt"] = str(caption) if caption is not None else ""
+            # the prefix in the dict is used to determine the global index of the image or caption 
+            # in the interleaved sequence of images and captions
+            sample = {"__key__": key, f"{prefix}.{self.encode_format}": img_str}
+            if self.save_caption:            
+                if type(caption) == list:
+                    for caption_index, caption in enumerate(caption):
+                        if caption is not None:
+                            sample[f"{caption_index}.txt"] = caption
+                else:
+                    # if `caption` is not a list, this means there is no interleaved captions in the instance
+                    # we don't need to save anything
+                    pass
             # some meta data may not be JSON serializable
             for k, v in meta.items():
                 if isinstance(v, np.ndarray):
                     meta[k] = v.tolist()
-            sample["json"] = json.dumps(meta, indent=4)
+            sample[f"{prefix}.json"] = json.dumps(meta, indent=4)
             self.tarwriter.write(sample)
         self.buffered_parquet_writer.write(meta)
 

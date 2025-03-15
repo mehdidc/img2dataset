@@ -144,7 +144,9 @@ class Downloader:
         fs, shard_path = fsspec.core.url_to_fs(shard_file)
         with fs.open(shard_path, "rb") as f:
             df = pa.ipc.open_file(f).read_all()
-        schema = df.schema
+            
+        has_caption = "caption" in self.column_list
+        schema = df.drop(["caption"]).schema if has_caption else df.schema
         schema = (
             schema.append(pa.field("key", pa.string()))
             .append(pa.field("status", pa.string()))
@@ -179,6 +181,12 @@ class Downloader:
         bbox_indice = self.column_list.index(self.blurring_bbox_col) if self.blurring_bbox_col is not None else None
         key_url_list = [(key, x[url_indice]) for key, x in shard_to_dl]
 
+        # flatten the list of urls
+        key_url_list = [
+            ((key, index), url) for key, urls in key_url_list for index, url in enumerate(urls) if url is not None
+        ]
+        processed = set() # set of keys where at least one image has been successfully processed
+
         # this prevents an accumulation of more than twice the number of threads in sample ready to resize
         # limit the memory usage
         semaphore = Semaphore(self.thread_count * 2)
@@ -201,7 +209,7 @@ class Downloader:
         )
         oom_sample_per_shard = math.ceil(math.log10(self.number_sample_per_shard))
         with ThreadPool(self.thread_count) as thread_pool:
-            for key, img_stream, error_message in thread_pool.imap_unordered(
+            for key_index, img_stream, error_message in thread_pool.imap(
                 lambda x: download_image_with_retry(
                     x,
                     timeout=self.timeout,
@@ -212,6 +220,7 @@ class Downloader:
                 loader,
             ):
                 try:
+                    key, image_index = key_index
                     _, sample_data = shard_to_dl[key]
                     str_key = compute_key(key, shard_id, oom_sample_per_shard, self.oom_shard_count)
                     meta = {
@@ -219,7 +228,7 @@ class Downloader:
                         **{
                             self.column_list[i]: sample_data[i]
                             for i in range(len(self.column_list))
-                            if (hash_indice is None or i != hash_indice)
+                            if (hash_indice is None or i != hash_indice) and self.column_list[i] != "caption" # do not save captions in meta
                         },
                         "key": str_key,
                         "status": None,
@@ -229,6 +238,8 @@ class Downloader:
                         "original_width": None,
                         "original_height": None,
                     }
+                    # override url in meta with the actual url of the image, otherwise url is a list of all urls of the interleaved sequence
+                    meta["url"] = sample_data[url_indice][image_index]
                     if self.extract_exif:
                         meta["exif"] = None
 
@@ -324,16 +335,18 @@ class Downloader:
                     meta["original_height"] = original_height
                     img_stream.close()
                     del img_stream
-
                     sample_writer.write(
                         img,
                         str_key,
-                        sample_data[caption_indice] if caption_indice is not None else None,
+                        # Only write captions once, we do it when we download the first image of the interleave sequence
+                        (sample_data[caption_indice] if caption_indice is not None else None) if key not in processed else None, 
                         meta,
+                        prefix=f"{image_index}",
                     )
+                    processed.add(key)
                 except Exception as err:  # pylint: disable=broad-except
                     traceback.print_exc()
-                    print(f"Sample {key} failed to download: {err}")
+                    print(f"Sample {key}.{image_index} failed to download: {err}")
                 semaphore.release()
 
             sample_writer.close()
