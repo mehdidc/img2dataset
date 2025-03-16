@@ -169,7 +169,7 @@ class Downloader:
 
         status_dict = CappedCounter()
 
-        count = len(shard_to_dl)
+        
         successes = 0
         failed_to_download = 0
         failed_to_resize = 0
@@ -180,11 +180,13 @@ class Downloader:
         )
         bbox_indice = self.column_list.index(self.blurring_bbox_col) if self.blurring_bbox_col is not None else None
         key_url_list = [(key, x[url_indice]) for key, x in shard_to_dl]
-
+        
+        
         # flatten the list of urls
         key_url_list = [
             ((key, index), url) for key, urls in key_url_list for index, url in enumerate(urls) if url is not None
         ]
+        count = len(key_url_list)
         processed = set() # set of keys where at least one image has been successfully processed
 
         # this prevents an accumulation of more than twice the number of threads in sample ready to resize
@@ -209,7 +211,7 @@ class Downloader:
         )
         oom_sample_per_shard = math.ceil(math.log10(self.number_sample_per_shard))
         with ThreadPool(self.thread_count) as thread_pool:
-            for key_index, img_stream, error_message in thread_pool.imap(
+            for key_index, img_stream, error_message in thread_pool.imap_unordered(
                 lambda x: download_image_with_retry(
                     x,
                     timeout=self.timeout,
