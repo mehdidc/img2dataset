@@ -120,10 +120,8 @@ class Reader:
                 for member in tar.getmembers():
                     file = tar.extractfile(member)
                     if file:
-                        print(file)
                         dfs.append(json_pa.read_json(file, read_options=read_options))
             df = pa.concat_tables(dfs)
-            print(df)
         elif self.input_format == "parquet":
             with self.fs.open(input_file, mode="rb") as file:
                 columns_to_read = [self.url_col]
