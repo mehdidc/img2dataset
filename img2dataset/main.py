@@ -144,7 +144,8 @@ def download(
 
     signal.signal(signal.SIGINT, signal_handler)
 
-    save_caption = caption_col is not None
+    #save_caption = caption_col is not None
+    save_caption = True
 
     fs, output_path = fsspec.core.url_to_fs(output_folder)
     start_shard_id = 0
