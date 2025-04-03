@@ -9,6 +9,8 @@ import pyarrow.csv as csv_pa
 import pyarrow.json as json_pa
 import pyarrow as pa
 import pandas as pd
+from pyarrow.json import ReadOptions
+
 
 
 class Reader:
@@ -65,7 +67,7 @@ class Reader:
 
         if self.input_format in ["txt", "txt.gz"]:
             self.column_list = ["url"]
-        elif self.input_format in ["json", "json.gz", "jsonl", "jsonl.gz", "csv", "csv.gz", "tsv", "tsv.gz", "parquet"]:
+        elif self.input_format in ["json", "json.gz", "jsonl", "jsonl.gz", "csv", "csv.gz", "tsv", "tsv.gz", "parquet", "jsonl.tar.gz"]:
             self.column_list = self.save_additional_columns if self.save_additional_columns is not None else []
             if self.caption_col is not None:
                 self.column_list = self.column_list + ["caption"]
@@ -108,6 +110,20 @@ class Reader:
                     df = json_pa.read_json(file)
                 else:
                     raise ValueError(f"Unknown input format {self.input_format}")
+            
+        elif self.input_format == "jsonl.tar.gz":
+            # read tar files
+            import tarfile
+            dfs = []
+            read_options = ReadOptions(block_size=10*2**20)
+            with tarfile.open(input_file, mode='r:gz') as tar:
+                for member in tar.getmembers():
+                    file = tar.extractfile(member)
+                    if file:
+                        print(file)
+                        dfs.append(json_pa.read_json(file, read_options=read_options))
+            df = pa.concat_tables(dfs)
+            print(df)
         elif self.input_format == "parquet":
             with self.fs.open(input_file, mode="rb") as file:
                 columns_to_read = [self.url_col]

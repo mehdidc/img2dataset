@@ -4,6 +4,7 @@ from multiprocessing.pool import ThreadPool
 from threading import Semaphore
 import urllib.request
 import io
+import re
 import math
 import exifread
 import json
@@ -74,6 +75,30 @@ def compute_key(key, shard_id, oom_sample_per_shard, oom_shard_count):
     )
     return str_key
 
+def parse_content(s):
+    import re
+    pattern = "!(\[(.*?)\]\((.*?)\))"
+    prev_image_end = 0
+    image_end = 0
+    images = []
+    texts = []
+    for tok in re.finditer(pattern, s):
+        # Find all images in the url
+        caption, url = tok.groups(2), tok.group(3)
+        # what do we do with url caption??        
+        image_start, image_end = tok.span()
+        if image_start - prev_image_end >= 1:
+            # if there is text between last image and current image, include it
+            texts.append(s[prev_image_end:image_start])
+            images.append(None)
+        images.append(url)
+        texts.append(None)
+        prev_image_end = image_end
+    # include the rest of the text after the last image, if exists
+    if len(s[image_end:]):
+        texts.append(s[image_end:])
+        images.append(None)
+    return images, texts
 
 class Downloader:
     """The downloader class gets calls with shards, download them then call the writer to write them down"""
@@ -179,8 +204,15 @@ class Downloader:
             self.column_list.index(self.verify_hash_type) if self.verify_hash_type in self.column_list else None
         )
         bbox_indice = self.column_list.index(self.blurring_bbox_col) if self.blurring_bbox_col is not None else None
-        key_url_list = [(key, x[url_indice]) for key, x in shard_to_dl]
+        #key_url_list = [(key, x[url_indice]) for key, x in shard_to_dl]
         
+        key_url_list = []
+        captions = {}
+        for key, x in shard_to_dl:
+            urls, caps = parse_content(x[url_indice])
+            captions[key] = caps
+            key_url_list.append((key, urls))
+            
         
         # flatten the list of urls
         key_url_list = [
@@ -341,7 +373,7 @@ class Downloader:
                         img,
                         str_key,
                         # Only write captions once, we do it when we download the first image of the interleave sequence
-                        (sample_data[caption_indice] if caption_indice is not None else None) if key not in processed else None, 
+                        (captions[key]) if key not in processed else None, 
                         meta,
                         prefix=f"{image_index}",
                     )
